@@ -1,0 +1,502 @@
+{
+  "name": "Simple CV Fit (Drive + OpenAI + Email)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ccd751c6-eedc-4d28-8d22-9c67a0b0b516",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1152,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "CV_FOLDER_ID",
+              "value": "https://drive.google.com/drive/u/1/folders/1kwQMPXU1LNITc2oQJ-ZEpr4C86mVbHjz"
+            },
+            {
+              "name": "PROFILE_FILE_ID",
+              "value": "https://drive.google.com/file/d/11OdBkY1w5EWCQeycOLuz9GSeH3HWgTvN/view?usp=sharing"
+            },
+            {
+              "name": "FIT_THRESHOLD",
+              "value": "7"
+            },
+            {
+              "name": "EMAIL_TO",
+              "value": "esayan@inno-craft.com"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0ade9983-2e47-4cb0-9557-cfa0e0bb5878",
+      "name": "Set Vars",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -928,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{$json.PROFILE_FILE_ID}}",
+          "__regex": "https:\\/\\/(?:drive|docs)\\.google\\.com(?:\\/.*|)\\/d\\/([0-9a-zA-Z\\-_]+)(?:\\/.*|)"
+        },
+        "options": {}
+      },
+      "id": "a95327f4-29be-4183-b55c-407613382ad7",
+      "name": "Drive - Download Profile.docx",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        192
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cjCKKQXZ3kiqZSDL",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "55a37a45-0d26-4592-93cd-80b4e1ab5c7f",
+      "name": "Extract Profile Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "list",
+        "useQueryString": true,
+        "queryString": "'1kwQMPXU1LNITc2oQJ-ZEpr4C86mVbHjz'  in parents",
+        "options": {}
+      },
+      "id": "85aaf8cb-e2bf-47b0-b197-0bbfe9026736",
+      "name": "Drive - List CVs",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        384
+      ],
+      "alwaysOutputData": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cjCKKQXZ3kiqZSDL",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "d97e61c8-a197-4349-843c-e7f9a6b17503",
+      "name": "Merge Profile -> CV Items",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "3c2fcf71-7b1b-4df9-8ff7-51f3dfd6680d",
+      "name": "Split in Batches (1)",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "9f0577fc-38dc-4e69-a2b1-8f2a4c8e37f9",
+      "name": "Drive - Download CV (PDF)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [
+        192,
+        224
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cjCKKQXZ3kiqZSDL",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "2434cc23-d546-447c-9b65-6e2db3491d51",
+      "name": "Extract CV Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        416,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1) OpenAI'den gelen ham text\nconst raw = $input.first().json.output[0].content[0].text;\n\n// 2) ```json ... ``` wrapper'ını temizle\nconst cleaned = raw\n  .replace(/```json/gi, '')\n  .replace(/```/g, '')\n  .trim();\n\n// 3) JSON parse et\nlet parsed;\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n throw new Error(\"OpenAI output JSON parse edilemedi: \" + cleaned);\n}\n\n// 4) Alanları normalize et (Türkçe key’ler!)\nreturn {\n  json: {\n    candidate_name: parsed[\"Aday\"] || null,\n    position_name: parsed[\"Pozisyon\"] || null,\n    fit_score: parsed[\"Fitlik\"] || null,\n    reasons: parsed[\"Sebepler\"] || []\n  }\n};\n"
+      },
+      "id": "e7070a57-7168-4dfa-bede-29b78598928a",
+      "name": "Parse OpenAI JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "f9563f0d-4b06-46c3-aa0d-796a944167d8",
+              "leftValue": "={{ $json.fit_score }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1dfe9e51-7b44-4834-b1a0-9fe578c4dee2",
+      "name": "IF Fit >= Threshold",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "toRecipients": "={{$node['Set Vars'].json.EMAIL_TO}}",
+        "subject": "={{ $json.position_name }} Pozisyonu için aday değerlendirmesi - {{ $json.candidate_name }}",
+        "bodyContent": "={{ $json.position_name }}\n\n{{ $json.candidate_name }}\n\n{{ $json.fit_score }}\n\n{{ $json.reasons }}",
+        "additionalFields": {}
+      },
+      "id": "b159af04-85a5-44ee-9e37-a44b8837a231",
+      "name": "Outlook - Send Email",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        144
+      ],
+      "webhookId": "42abb498-8003-4227-a08e-f65c4c5b69d9",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "1Vg8jT5aGwDpfZMf",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items;"
+      },
+      "id": "48852ce6-0bc0-4e80-b5fd-545d47e0fc4e",
+      "name": "Loop Back",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "={{ $('Extract Profile Text').item.json.text }} bu job profile. {{ $json.text }} bu adayımız. Bu job profile ile aday özelliklerini inceleyip pozisyona olan fitliği 10 üzerinen puanlayıp sebebini 5 bullet olarak verir misin? ÇOK ÖNEMLİ CEVABIN SADECE JSON FORMATINDA ve Aday - Pozisyon - Fitlik - Sebepler olarak döner misin? Bu çok önemli. \n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        864,
+        224
+      ],
+      "id": "b8d42c12-d333-484b-98da-67425b8ad527",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "RxC9s6U9XrEqQCtQ",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        224
+      ],
+      "id": "01c66d4b-ebd8-4ca1-ae1d-4b4fd16b4bc3",
+      "name": "Wait",
+      "webhookId": "a6ffcc3a-0e67-4831-9a1a-cc5af375f097"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Vars",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Vars": {
+      "main": [
+        [
+          {
+            "node": "Drive - Download Profile.docx",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Drive - List CVs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive - Download Profile.docx": {
+      "main": [
+        [
+          {
+            "node": "Extract Profile Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Profile Text": {
+      "main": [
+        [
+          {
+            "node": "Merge Profile -> CV Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive - List CVs": {
+      "main": [
+        [
+          {
+            "node": "Merge Profile -> CV Items",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Profile -> CV Items": {
+      "main": [
+        [
+          {
+            "node": "Split in Batches (1)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split in Batches (1)": {
+      "main": [
+        [
+          {
+            "node": "Drive - Download CV (PDF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive - Download CV (PDF)": {
+      "main": [
+        [
+          {
+            "node": "Extract CV Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CV Text": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OpenAI JSON": {
+      "main": [
+        [
+          {
+            "node": "IF Fit >= Threshold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Fit >= Threshold": {
+      "main": [
+        [
+          {
+            "node": "Outlook - Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outlook - Send Email": {
+      "main": [
+        [
+          {
+            "node": "Loop Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Back": {
+      "main": [
+        [
+          {
+            "node": "Split in Batches (1)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenAI JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "0262e3c1-37df-4f2c-8b95-e546653ecf30",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5118d0b05871bc936eb2d72178b1997c5dd8a334ab66c8105846b271e9965e78"
+  },
+  "id": "fcACqBStqwqJ7KSr",
+  "tags": []
+}
